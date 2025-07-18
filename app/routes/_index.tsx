@@ -26,6 +26,10 @@ export default function Index() {
   const [hasLoaded, setHasLoaded] = useState(false);
   const [now, setNow] = useState(Date.now());
 
+
+
+  // Load from localStorage on first mount
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem("todos");
@@ -39,6 +43,7 @@ export default function Index() {
       setHasLoaded(true);
     }
   }, []);
+
 
   useEffect(() => {
     if (hasLoaded) {
@@ -281,6 +286,7 @@ export default function Index() {
                 </li>
               );
             })}
+
           </ul>
         </CardContent>
       </Card>
