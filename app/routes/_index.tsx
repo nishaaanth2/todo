@@ -1,138 +1,295 @@
-import type { MetaFunction } from "@remix-run/node";
+import { useEffect, useState } from "react";
+import { Input } from "../components/ui/input";
+import { Button } from "../components/ui/button";
+import { Card, CardContent } from "../components/ui/card";
+import { Progress } from "../components/ui/progress";
+import { cn } from "../lib/utils";
 
-export const meta: MetaFunction = () => {
-  return [
-    { title: "New Remix App" },
-    { name: "description", content: "Welcome to Remix!" },
-  ];
+type Todo = {
+  id: number;
+  text: string;
+  type: "routine" | "oneTime";
+  daysOfWeek?: string[];
+  allocatedMins: number;
+  completed?: boolean;
+  running?: boolean;
+  startedAt?: number | null;
 };
 
 export default function Index() {
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [newTodo, setNewTodo] = useState("");
+  const [type, setType] = useState<"routine" | "oneTime">("oneTime");
+  const [selectedDays, setSelectedDays] = useState<string[]>([]);
+  const [hours, setHours] = useState(0);
+  const [minutes, setMinutes] = useState(15);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [now, setNow] = useState(Date.now());
+
+
+
+  // Load from localStorage on first mount
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("todos");
+      if (stored) {
+        try {
+          setTodos(JSON.parse(stored));
+        } catch (e) {
+          console.error("Failed to parse todos:", e);
+        }
+      }
+      setHasLoaded(true);
+    }
+  }, []);
+
+
+  useEffect(() => {
+    if (hasLoaded) {
+      localStorage.setItem("todos", JSON.stringify(todos));
+    }
+  }, [todos, hasLoaded]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const anyRunning = todos.some((t) => t.running && t.startedAt);
+      if (anyRunning) {
+        setNow(Date.now());
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [todos]);
+
+  useEffect(() => {
+    todos.forEach((todo) => {
+      if (todo.running && todo.startedAt && !todo.completed) {
+        const elapsed = (now - todo.startedAt) / 1000;
+        const total = todo.allocatedMins * 60;
+        if (elapsed >= total) {
+          new Audio("/alarm.mp3").play();
+          setTodos((prev) =>
+            prev.map((t) =>
+              t.id === todo.id
+                ? { ...t, completed: true, running: false, startedAt: null }
+                : t
+            )
+          );
+        }
+      }
+    });
+  }, [now]);
+
+  const toggleDay = (day: string) => {
+    setSelectedDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
+    );
+  };
+
+  const totalMins = hours * 60 + minutes;
+
+  const getProgress = (todo: Todo) => {
+    if (!todo.startedAt) return 0;
+    const elapsed = (now - todo.startedAt) / 1000;
+    const total = todo.allocatedMins * 60;
+    return Math.min((elapsed / total) * 100, 100);
+  };
+
+  const startTimer = (id: number) => {
+    setTodos((prev) =>
+      prev.map((t) =>
+        t.id === id
+          ? { ...t, startedAt: Date.now(), running: true, completed: false }
+          : t
+      )
+    );
+    setNow(Date.now());
+  };
+
+  const stopTimer = (id: number) => {
+    setTodos((prev) =>
+      prev.map((t) =>
+        t.id === id ? { ...t, running: false, startedAt: null } : t
+      )
+    );
+  };
+
+  const finishTodo = (id: number) => {
+    setTodos((prev) =>
+      prev.map((t) =>
+        t.id === id
+          ? { ...t, running: false, completed: true, startedAt: null }
+          : t
+      )
+    );
+  };
+
+  const addTodo = () => {
+    if (!newTodo.trim()) return;
+    if (type === "routine" && selectedDays.length === 0) {
+      alert("Please select at least one day for routine tasks.");
+      return;
+    }
+    if (totalMins < 5 || totalMins > 720) {
+      alert("Time must be between 5 minutes and 12 hours.");
+      return;
+    }
+
+    const todo: Todo = {
+      id: Date.now(),
+      text: newTodo,
+      type,
+      daysOfWeek: type === "routine" ? selectedDays : undefined,
+      allocatedMins: totalMins,
+      completed: false,
+      running: false,
+      startedAt: null,
+    };
+
+    setTodos([...todos, todo]);
+    setNewTodo("");
+    setHours(0);
+    setMinutes(15);
+    setSelectedDays([]);
+    setType("oneTime");
+  };
+
+  const clearTodos = () => {
+    localStorage.removeItem("todos");
+    setTodos([]);
+  };
+
   return (
-    <div className="flex h-screen items-center justify-center">
-      <div className="flex flex-col items-center gap-16">
-        <header className="flex flex-col items-center gap-9">
-          <h1 className="leading text-2xl font-bold text-gray-800 dark:text-gray-100">
-            Welcome to <span className="sr-only">Remix</span>
-          </h1>
-          <div className="h-[144px] w-[434px]">
-            <img
-              src="/logo-light.png"
-              alt="Remix"
-              className="block w-full dark:hidden"
-            />
-            <img
-              src="/logo-dark.png"
-              alt="Remix"
-              className="hidden w-full dark:block"
-            />
-          </div>
-        </header>
-        <nav className="flex flex-col items-center justify-center gap-4 rounded-3xl border border-gray-200 p-6 dark:border-gray-700">
-          <p className="leading-6 text-gray-700 dark:text-gray-200">
-            What&apos;s next?
-          </p>
-          <ul>
-            {resources.map(({ href, text, icon }) => (
-              <li key={href}>
-                <a
-                  className="group flex items-center gap-3 self-stretch p-3 leading-normal text-blue-700 hover:underline dark:text-blue-500"
-                  href={href}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {icon}
-                  {text}
-                </a>
-              </li>
+    <main className="min-h-screen flex items-center justify-center bg-muted py-10">
+      <Card className="w-full max-w-md shadow-xl">
+        <CardContent className="p-6 space-y-6">
+          <h1 className="text-2xl font-bold mb-2">📝 My Local Todo List</h1>
+
+          <div className="flex gap-4 text-sm">
+            {['oneTime'].map((val) => (
+            // {['oneTime', 'routine'].map((val) => (
+              <label key={val} className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  value={val}
+                  checked={type === val}
+                  onChange={() => setType(val as "routine" | "oneTime")}
+                />
+                {val === 'oneTime' ? 'One-Time' : 'Routine'}
+              </label>
             ))}
+          </div>
+
+          {type === "routine" && (
+            <div className="flex flex-wrap gap-2">
+              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                <Button
+                  key={day}
+                  variant={selectedDays.includes(day) ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => toggleDay(day)}
+                >
+                  {day}
+                </Button>
+              ))}
+            </div>
+          )}
+
+          <Input
+            value={newTodo}
+            onChange={(e) => setNewTodo(e.target.value)}
+            placeholder="Add a task..."
+          />
+
+          <div className="text-sm">
+            <label className="block mb-1">Allocated Time</label>
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                min={0}
+                max={12}
+                value={hours}
+                onChange={(e) =>
+                  setHours(Math.min(12, Math.max(0, parseInt(e.target.value) || 0)))
+                }
+                placeholder="Hours"
+              />
+              <Input
+                type="number"
+                min={0}
+                max={59}
+                value={minutes}
+                onChange={(e) =>
+                  setMinutes(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))
+                }
+                placeholder="Minutes"
+              />
+            </div>
+            <p className="text-xs mt-1 text-muted-foreground">
+              Total: {totalMins} minutes
+            </p>
+          </div>
+
+          <div className="flex gap-2">
+            <Button onClick={addTodo}>Add</Button>
+            <Button variant="destructive" onClick={clearTodos}>
+              Clear All
+            </Button>
+          </div>
+
+          <ul className="space-y-4">
+            {todos.map((todo) => {
+              const progress = getProgress(todo);
+              const minsLeft = Math.max(
+                0,
+                todo.allocatedMins - Math.floor(((now - (todo.startedAt ?? 0)) / 1000) / 60)
+              );
+              return (
+                <li key={todo.id} className="bg-white border rounded p-3 shadow">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h2 className="font-semibold">{todo.text}</h2>
+                      <p className="text-xs text-gray-500">
+                        {todo.type === "routine"
+                          ? `Routine: ${todo.daysOfWeek?.join(", ")}`
+                          : "One-Time Task"}
+                        
+                        • {Math.floor(todo.allocatedMins / 60)}h {todo.allocatedMins % 60}m
+                        {todo.running && ` • ${minsLeft}m left`}
+                      </p>
+                    </div>
+                    <div className="space-x-1">
+                      {!todo.completed && (
+                        <>
+                          {!todo.running ? (
+                            <Button size="sm" onClick={() => startTimer(todo.id)}>
+                              Start
+                            </Button>
+                          ) : (
+                            <Button size="sm" onClick={() => stopTimer(todo.id)}>
+                              Stop
+                            </Button>
+                          )}
+                          <Button size="sm" variant="outline" onClick={() => finishTodo(todo.id)}>
+                            Finish
+                          </Button>
+                        </>
+                      )}
+                      {todo.completed && (
+                        <span className="text-green-600 font-semibold text-sm">✔ Done</span>
+                      )}
+                    </div>
+                  </div>
+                  {todo.running && (
+                    <Progress value={progress} className="mt-2" />
+                  )}
+                </li>
+              );
+            })}
+
           </ul>
-        </nav>
-      </div>
-    </div>
+        </CardContent>
+      </Card>
+    </main>
   );
 }
-
-const resources = [
-  {
-    href: "https://remix.run/start/quickstart",
-    text: "Quick Start (5 min)",
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="20"
-        viewBox="0 0 20 20"
-        fill="none"
-        className="stroke-gray-600 group-hover:stroke-current dark:stroke-gray-300"
-      >
-        <path
-          d="M8.51851 12.0741L7.92592 18L15.6296 9.7037L11.4815 7.33333L12.0741 2L4.37036 10.2963L8.51851 12.0741Z"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    ),
-  },
-  {
-    href: "https://remix.run/start/tutorial",
-    text: "Tutorial (30 min)",
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="20"
-        viewBox="0 0 20 20"
-        fill="none"
-        className="stroke-gray-600 group-hover:stroke-current dark:stroke-gray-300"
-      >
-        <path
-          d="M4.561 12.749L3.15503 14.1549M3.00811 8.99944H1.01978M3.15503 3.84489L4.561 5.2508M8.3107 1.70923L8.3107 3.69749M13.4655 3.84489L12.0595 5.2508M18.1868 17.0974L16.635 18.6491C16.4636 18.8205 16.1858 18.8205 16.0144 18.6491L13.568 16.2028C13.383 16.0178 13.0784 16.0347 12.915 16.239L11.2697 18.2956C11.047 18.5739 10.6029 18.4847 10.505 18.142L7.85215 8.85711C7.75756 8.52603 8.06365 8.21994 8.39472 8.31453L17.6796 10.9673C18.0223 11.0653 18.1115 11.5094 17.8332 11.7321L15.7766 13.3773C15.5723 13.5408 15.5554 13.8454 15.7404 14.0304L18.1868 16.4767C18.3582 16.6481 18.3582 16.926 18.1868 17.0974Z"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    ),
-  },
-  {
-    href: "https://remix.run/docs",
-    text: "Remix Docs",
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="20"
-        viewBox="0 0 20 20"
-        fill="none"
-        className="stroke-gray-600 group-hover:stroke-current dark:stroke-gray-300"
-      >
-        <path
-          d="M9.99981 10.0751V9.99992M17.4688 17.4688C15.889 19.0485 11.2645 16.9853 7.13958 12.8604C3.01467 8.73546 0.951405 4.11091 2.53116 2.53116C4.11091 0.951405 8.73546 3.01467 12.8604 7.13958C16.9853 11.2645 19.0485 15.889 17.4688 17.4688ZM2.53132 17.4688C0.951566 15.8891 3.01483 11.2645 7.13974 7.13963C11.2647 3.01471 15.8892 0.951453 17.469 2.53121C19.0487 4.11096 16.9854 8.73551 12.8605 12.8604C8.73562 16.9853 4.11107 19.0486 2.53132 17.4688Z"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-      </svg>
-    ),
-  },
-  {
-    href: "https://rmx.as/discord",
-    text: "Join Discord",
-    icon: (
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="20"
-        viewBox="0 0 24 20"
-        fill="none"
-        className="stroke-gray-600 group-hover:stroke-current dark:stroke-gray-300"
-      >
-        <path
-          d="M15.0686 1.25995L14.5477 1.17423L14.2913 1.63578C14.1754 1.84439 14.0545 2.08275 13.9422 2.31963C12.6461 2.16488 11.3406 2.16505 10.0445 2.32014C9.92822 2.08178 9.80478 1.84975 9.67412 1.62413L9.41449 1.17584L8.90333 1.25995C7.33547 1.51794 5.80717 1.99419 4.37748 2.66939L4.19 2.75793L4.07461 2.93019C1.23864 7.16437 0.46302 11.3053 0.838165 15.3924L0.868838 15.7266L1.13844 15.9264C2.81818 17.1714 4.68053 18.1233 6.68582 18.719L7.18892 18.8684L7.50166 18.4469C7.96179 17.8268 8.36504 17.1824 8.709 16.4944L8.71099 16.4904C10.8645 17.0471 13.128 17.0485 15.2821 16.4947C15.6261 17.1826 16.0293 17.8269 16.4892 18.4469L16.805 18.8725L17.3116 18.717C19.3056 18.105 21.1876 17.1751 22.8559 15.9238L23.1224 15.724L23.1528 15.3923C23.5873 10.6524 22.3579 6.53306 19.8947 2.90714L19.7759 2.73227L19.5833 2.64518C18.1437 1.99439 16.6386 1.51826 15.0686 1.25995ZM16.6074 10.7755L16.6074 10.7756C16.5934 11.6409 16.0212 12.1444 15.4783 12.1444C14.9297 12.1444 14.3493 11.6173 14.3493 10.7877C14.3493 9.94885 14.9378 9.41192 15.4783 9.41192C16.0471 9.41192 16.6209 9.93851 16.6074 10.7755ZM8.49373 12.1444C7.94513 12.1444 7.36471 11.6173 7.36471 10.7877C7.36471 9.94885 7.95323 9.41192 8.49373 9.41192C9.06038 9.41192 9.63892 9.93712 9.6417 10.7815C9.62517 11.6239 9.05462 12.1444 8.49373 12.1444Z"
-          strokeWidth="1.5"
-        />
-      </svg>
-    ),
-  },
-];
